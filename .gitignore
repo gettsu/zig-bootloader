@@ -1,0 +1,4 @@
+zig-cache/
+OVMF_VARS.fd
+OVMF_CODE.fd
+BOOTX64*
