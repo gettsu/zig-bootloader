@@ -14,7 +14,33 @@ var gop: ?*uefi.protocols.GraphicsOutputProtocol = undefined;
 var root_dir: *uefi.protocols.FileProtocol = undefined;
 
 pub fn main() void {
+    var buf: [100]u8 = undefined;
+    var str_buf: [256]u8 = undefined;
+    var bfa = std.heap.FixedBufferAllocator.init(str_buf[0..]);
+    const allocator = bfa.allocator();
+
     init();
+
+    var kernel_file: *uefi.protocols.FileProtocol = undefined;
+    if (root_dir.open(&kernel_file, L("kernel.elf"), uefi.protocols.FileProtocol.efi_file_mode_read, 0) != uefi.Status.Success) {
+        _ = con_out.outputString(L("failed to open kernel file\r\n"));
+        halt();
+    }
+
+    const tmp_file_info_size = @sizeOf(uefi.protocols.FileInfo) + @sizeOf(u8) * 24;
+
+    var file_info_size: u64 = tmp_file_info_size;
+    var file_info_buffer: [tmp_file_info_size]u8 = undefined;
+
+    if (kernel_file.getInfo(&uefi.protocols.FileInfo.guid, &file_info_size, &file_info_buffer) != uefi.Status.Success) {
+        _ = con_out.outputString(L("failed to read file info\r\n"));
+        halt();
+    }
+
+    var file_info: [*]uefi.protocols.FileInfo = @ptrCast([*]uefi.protocols.FileInfo, @alignCast(8, &file_info_buffer));
+    const kernel_file_size = file_info[0].size;
+    _ = con_out.outputString(LR(allocator, fmt.bufPrint(buf[0..], "kenrel_file_size = {d}\r\n", .{kernel_file_size}) catch unreachable) catch unreachable);
+
     halt();
 }
 
@@ -43,5 +69,7 @@ fn init() void {
 }
 
 fn halt() void {
-    while(true) { asm volatile("hlt"); }
+    while (true) {
+        asm volatile ("hlt");
+    }
 }
