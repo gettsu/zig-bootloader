@@ -36,8 +36,8 @@ pub fn main() void {
         halt();
     }
 
-    var file_info: [*]uefi.protocols.FileInfo = @ptrCast([*]uefi.protocols.FileInfo, @alignCast(8, &file_info_buffer));
-    const kernel_file_size = file_info[0].size;
+    var file_info: *uefi.protocols.FileInfo = @ptrCast(*uefi.protocols.FileInfo, @alignCast(8, &file_info_buffer));
+    const kernel_file_size = file_info.size;
     printf(allocator, "kernel_file_size = {}\r\n", .{kernel_file_size});
 
     halt();
@@ -64,6 +64,8 @@ fn init(allocator: std.mem.Allocator) void {
         printf(allocator, "cannot locate graphics output protocol\r\n", .{});
         halt();
     }
+    printf(allocator, "current graphic mode {} = {}x{}\r\n", .{ gop.?.mode.mode, gop.?.mode.info.horizontal_resolution, gop.?.mode.info.vertical_resolution });
+
     printf(allocator, "boot init success!\r\n", .{});
 }
 
@@ -79,4 +81,3 @@ fn printf(allocator: std.mem.Allocator, comptime format: []const u8, args: anyty
     _ = con_out.outputString(str);
     allocator.free(str);
 }
-

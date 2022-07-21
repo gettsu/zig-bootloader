@@ -1,3 +1,5 @@
+FILES = src/main.zig build.zig kernel/src/main.zig kernel/build.zig
+
 qemu: OVMF_CODE.fd OVMF_VARS.fd EFI/BOOT/BOOTX64.EFI
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=./OVMF_CODE.fd \
@@ -17,6 +19,10 @@ OVMF.fd:
 	wget http://downloads.sourceforge.net/project/edk2/OVMF/OVMF-X64-r15214.zip
 	unzip OVMF-X64-r15214.zip OVMF.fd
 	rm OVMF-X64-r15214.zip
+
+.PHONY: fmt
+fmt: $(FILES)
+	zig fmt $(FILES)
 
 .PHONY: clean all_clean
 
