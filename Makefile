@@ -18,6 +18,12 @@ OVMF.fd:
 	unzip OVMF-X64-r15214.zip OVMF.fd
 	rm OVMF-X64-r15214.zip
 
+.PHONY: clean all_clean
+
 clean:
+	rm -rf EFI
+	rm -f kernel.elf kernel.elf.o
+
+all_clean:
 	rm -f OVMF.fd NvVars OVMF_CODE.fd OVMF_VARS.fd
 	rm -rf EFI
