@@ -3,6 +3,7 @@ const uefi = std.os.uefi;
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 const LA = std.unicode.utf8ToUtf16LeWithNull;
 const fmt = std.fmt;
+const elf = std.elf;
 const MemoryDescriptor = uefi.tables.MemoryDescriptor;
 
 const MemoryType = uefi.tables.MemoryType;
@@ -52,35 +53,28 @@ pub fn main() void {
     }
 
     // ファイル情報の取得
-    const tmp_file_info_size = @sizeOf(uefi.protocols.FileInfo) + @sizeOf(u16) * 12;
-    var file_info_size: u64 = tmp_file_info_size;
-    var file_info_buffer: [tmp_file_info_size]u8 = undefined;
-    if (kernel_file.getInfo(&uefi.protocols.FileInfo.guid, &file_info_size, &file_info_buffer) != uefi.Status.Success) {
-        printf(allocator, "failed to read file_info\r\n", .{});
-        halt();
-    }
-    var file_info: *uefi.protocols.FileInfo = @ptrCast(*uefi.protocols.FileInfo, @alignCast(8, &file_info_buffer));
-    {
-        _ = con_out.outputString(L("file_name = "));
-        _ = con_out.outputString(file_info.getFileName());
-        _ = con_out.outputString(L("\r\n"));
-    }
+    var kernel_buffer: [*]align(8)u8 = undefined;
+    readFile(allocator, kernel_file, &kernel_buffer);
 
-    var kernel_file_size = file_info.file_size;
-    printf(allocator, "kernel_file_size = {}\r\n", .{kernel_file_size});
+    var kernel_first_addr: u64 = undefined;
+    var kernel_last_addr: u64 = undefined;
+    calcLoadAddressRange(kernel_buffer, &kernel_first_addr, &kernel_last_addr);
 
-    // ファイルをkernel_base_addrに読み出す処理
-    var kernel_base_addr: u64 = 0x100000;
-    if (boot_services.allocatePages(AllocateType.AllocateAddress, MemoryType.LoaderData, (kernel_file_size + 0xfff) / 0x1000, &(@alignCast(4096, (@intToPtr([*]u8, kernel_base_addr))))) != uefi.Status.Success) {
-        printf(allocator, "allocation for kernel.elf failed\r\n", .{});
-        halt();
-    }
-    if (kernel_file.read(&kernel_file_size, @intToPtr([*]u8, kernel_base_addr)) != uefi.Status.Success) {
-        printf(allocator, "cannot read kernel_file\r\n", .{});
+    const num_pages = (kernel_last_addr - kernel_first_addr + 0xfff) / 0x1000;
+    if (boot_services.allocatePages(AllocateType.AllocateMaxAddress, MemoryType.LoaderData, num_pages, &(@alignCast(4096, (@intToPtr([*]u8, kernel_first_addr)))))!= uefi.Status.Success) {
+        printf(allocator, "failed to allocate pages\r\n", .{});
         halt();
     }
 
-    const entry_addr: u64 = @intToPtr(*u64, kernel_base_addr + 24).*;
+    copyLoadSegments(kernel_buffer);
+    printf(allocator, "kernel: 0x{x} - 0x{x}\r\n", .{kernel_first_addr, kernel_last_addr});
+
+    if (boot_services.freePool(kernel_buffer) != uefi.Status.Success) {
+        printf(allocator, "failed to free pool\r\n", .{});
+        halt();
+    }
+
+    const entry_addr: u64 = @intToPtr(*u64, kernel_first_addr + 24).*;
     printf(allocator, "entry_addr = 0x{x}\r\n", .{entry_addr});
 
     // メモリマップ取得
@@ -100,7 +94,6 @@ pub fn main() void {
     }
 
     entryPoint(entry_addr);
-
     halt();
 }
 
@@ -128,6 +121,65 @@ fn init(allocator: std.mem.Allocator) void {
     printf(allocator, "current graphic mode {} = {}x{}\r\n", .{ gop.?.mode.mode, gop.?.mode.info.horizontal_resolution, gop.?.mode.info.vertical_resolution });
 
     printf(allocator, "boot init success!\r\n", .{});
+}
+
+fn readFile(allocator: std.mem.Allocator, file: *uefi.protocols.FileProtocol, buffer: *[*]align(8) u8) void {
+    const tmp_file_info_size = @sizeOf(uefi.protocols.FileInfo) + @sizeOf(u16) * 12;
+    var file_info_size: u64 = tmp_file_info_size;
+    var file_info_buffer: [tmp_file_info_size]u8 = undefined;
+    if (file.getInfo(&uefi.protocols.FileInfo.guid, &file_info_size, &file_info_buffer) != uefi.Status.Success) {
+        printf(allocator, "failed to read file_info\r\n", .{});
+        halt();
+    }
+
+    const file_info: *uefi.protocols.FileInfo = @ptrCast(*uefi.protocols.FileInfo, @alignCast(8, &file_info_buffer));
+    var file_size = file_info.file_size;
+    {
+        _ = con_out.outputString(L("file_name = "));
+        _ = con_out.outputString(file_info.getFileName());
+        _ = con_out.outputString(L("\r\n"));
+    }
+
+    if (boot_services.allocatePool(MemoryType.LoaderData, file_size, buffer) != uefi.Status.Success) {
+        printf(allocator, "failed to allocate file\r\n", .{});
+        halt();
+    }
+
+    if (file.read(&file_size, buffer.*) != uefi.Status.Success) {
+        printf(allocator, "failed to read file\r\n", .{});
+        halt();
+    }
+}
+
+fn calcLoadAddressRange(kernel_buffer: [*]u8, first: *u64, last: *u64) void {
+    const ehdr :*elf.Elf64_Ehdr = @ptrCast(*elf.Elf64_Ehdr, @alignCast(8, kernel_buffer));
+    var phdr: [*]elf.Elf64_Phdr = @intToPtr([*]elf.Elf64_Phdr,@ptrToInt(kernel_buffer) + ehdr.e_phoff);
+    var i: usize = 0;
+    first.* = std.math.inf_u64;
+    last.* = 0;
+    while (i < ehdr.e_phnum) : (i += 1) {
+        if (phdr[i].p_type != elf.PT_LOAD) {
+            continue;
+        }
+        first.* = std.math.min(first.*, phdr[i].p_vaddr);
+        last.* = std.math.max(last.*, phdr[i].p_vaddr + phdr[i].p_memsz);
+    }
+}
+
+fn copyLoadSegments(kernel_buffer: [*]u8)void {
+    const ehdr :*elf.Elf64_Ehdr = @ptrCast(*elf.Elf64_Ehdr, @alignCast(8, kernel_buffer));
+    var phdr: [*]elf.Elf64_Phdr = @intToPtr([*]elf.Elf64_Phdr,@ptrToInt(kernel_buffer) + ehdr.e_phoff);
+
+    var i: usize = 0;
+    while (i < ehdr.e_phnum) : (i += 1) {
+        if (phdr[i].p_type != elf.PT_LOAD){
+            continue;
+        }
+        var segm_in_file: usize = @ptrToInt(ehdr) + phdr[i].p_offset;
+        @memcpy(@intToPtr([*]u8, phdr[i].p_vaddr), @intToPtr([*]u8, segm_in_file), phdr[i].p_filesz);
+        var remain_bytes: usize = phdr[i].p_memsz - phdr[i].p_filesz;
+        @memset(@intToPtr([*]u8, phdr[i].p_vaddr) + phdr[i].p_filesz, 0, remain_bytes);
+    }
 }
 
 fn halt() void {
