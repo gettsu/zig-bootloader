@@ -24,13 +24,12 @@ comptime {
     asm (
         \\.global entryPoint
         \\entryPoint:
-        \\    push %rbp
-        \\    mov %rsp, %rbp
-        \\    call *%rcx
-        \\    mov %rbp, %rsp
-        \\    pop %rbp
+        \\    pushq %rbp
+        \\    movq %rsp, %rbp
+        \\    callq *%rcx
+        \\    movq %rbp, %rsp
+        \\    popq %rbp
         \\    retq
-        \\    ud2
     );
 }
 
