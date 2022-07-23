@@ -36,6 +36,7 @@ comptime {
 extern fn entryPoint(entry_addr: u64) void;
 
 pub fn main() void {
+    var status: uefi.Status = undefined;
     // 文字列をUTF-16に変換するためのアロケーター
     var str_buf: [256]u8 = undefined;
     var bfa = std.heap.FixedBufferAllocator.init(str_buf[0..]);
@@ -46,13 +47,14 @@ pub fn main() void {
 
     // カーネルファイルの取得
     var kernel_file: *uefi.protocols.FileProtocol = undefined;
-    if (root_dir.open(&kernel_file, L("\\kernel.elf"), uefi.protocols.FileProtocol.efi_file_mode_read, 0) != uefi.Status.Success) {
-        printf(allocator, "failed to open kernel_file\r\n", .{});
+    status = root_dir.open(&kernel_file, L("\\kernel.elf"), uefi.protocols.FileProtocol.efi_file_mode_read, 0);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to open kernel_file: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
     // ファイル情報の取得
-    var kernel_buffer: [*]align(8)u8 = undefined;
+    var kernel_buffer: [*]align(8) u8 = undefined;
     readFile(allocator, kernel_file, &kernel_buffer);
 
     var kernel_first_addr: u64 = undefined;
@@ -60,16 +62,18 @@ pub fn main() void {
     calcLoadAddressRange(kernel_buffer, &kernel_first_addr, &kernel_last_addr);
 
     const num_pages = (kernel_last_addr - kernel_first_addr + 0xfff) / 0x1000;
-    if (boot_services.allocatePages(AllocateType.AllocateMaxAddress, MemoryType.LoaderData, num_pages, &(@alignCast(4096, (@intToPtr([*]u8, kernel_first_addr)))))!= uefi.Status.Success) {
-        printf(allocator, "failed to allocate pages\r\n", .{});
+    status = boot_services.allocatePages(AllocateType.AllocateMaxAddress, MemoryType.LoaderData, num_pages, &(@alignCast(4096, (@intToPtr([*]u8, kernel_first_addr)))));
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to allocate pages: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
     copyLoadSegments(kernel_buffer);
-    printf(allocator, "kernel: 0x{x} - 0x{x}\r\n", .{kernel_first_addr, kernel_last_addr});
+    printf(allocator, "kernel: 0x{x} - 0x{x}\r\n", .{ kernel_first_addr, kernel_last_addr });
 
-    if (boot_services.freePool(kernel_buffer) != uefi.Status.Success) {
-        printf(allocator, "failed to free pool\r\n", .{});
+    status = boot_services.freePool(kernel_buffer);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to free pool: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
@@ -81,14 +85,16 @@ pub fn main() void {
     var mmap_key: usize = undefined;
     var desc_size: usize = undefined;
     var desc_version: u32 = undefined;
-    if (boot_services.getMemoryMap(&mmap_size, @ptrCast([*]MemoryDescriptor, &memory_map), &mmap_key, &desc_size, &desc_version) != uefi.Status.Success) {
-        printf(allocator, "Buffer Too Small\r\n", .{});
+    status = boot_services.getMemoryMap(&mmap_size, @ptrCast([*]MemoryDescriptor, &memory_map), &mmap_key, &desc_size, &desc_version);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to get memorymap: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
     // exit boot service
-    if (boot_services.exitBootServices(uefi.handle, mmap_key) != uefi.Status.Success) {
-        printf(allocator, "exitBootServices fail\r\n", .{});
+    status = boot_services.exitBootServices(uefi.handle, mmap_key);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "exitBootServices fail: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
@@ -97,37 +103,44 @@ pub fn main() void {
 }
 
 fn init(allocator: std.mem.Allocator) void {
+    var status: uefi.Status = undefined;
     boot_services = uefi.system_table.boot_services.?;
     con_out = uefi.system_table.con_out.?;
     _ = con_out.reset(false);
 
     printf(allocator, "boot init start\r\n", .{});
 
-    if (boot_services.locateProtocol(&uefi.protocols.SimpleFileSystemProtocol.guid, null, @ptrCast(*?*anyopaque, &sfsp)) != uefi.Status.Success) {
-        printf(allocator, "cannot locate simple file system protocol\r\n", .{});
+    status = boot_services.locateProtocol(&uefi.protocols.SimpleFileSystemProtocol.guid, null, @ptrCast(*?*anyopaque, &sfsp));
+    if (status != uefi.Status.Success) {
+        printf(allocator, "cannot locate simple file system protocol: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
-    if (sfsp.?.openVolume(&root_dir) != uefi.Status.Success) {
-        printf(allocator, "cannot open volume\r\n", .{});
+    status = sfsp.?.openVolume(&root_dir);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "cannot open volume: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
-    if (boot_services.locateProtocol(&uefi.protocols.GraphicsOutputProtocol.guid, null, @ptrCast(*?*anyopaque, &gop)) != uefi.Status.Success) {
-        printf(allocator, "cannot locate graphics output protocol\r\n", .{});
+    status = boot_services.locateProtocol(&uefi.protocols.GraphicsOutputProtocol.guid, null, @ptrCast(*?*anyopaque, &gop));
+    if (status != uefi.Status.Success) {
+        printf(allocator, "cannot locate graphics output protocol: {s}\r\n", .{@tagName(status)});
         halt();
     }
     printf(allocator, "current graphic mode {} = {}x{}\r\n", .{ gop.?.mode.mode, gop.?.mode.info.horizontal_resolution, gop.?.mode.info.vertical_resolution });
+    printf(allocator, "pixel_format = {s}\r\n", .{@tagName(gop.?.mode.info.pixel_format)});
 
     printf(allocator, "boot init success!\r\n", .{});
 }
 
 fn readFile(allocator: std.mem.Allocator, file: *uefi.protocols.FileProtocol, buffer: *[*]align(8) u8) void {
+    var status: uefi.Status = undefined;
     const tmp_file_info_size = @sizeOf(uefi.protocols.FileInfo) + @sizeOf(u16) * 12;
     var file_info_size: u64 = tmp_file_info_size;
     var file_info_buffer: [tmp_file_info_size]u8 = undefined;
-    if (file.getInfo(&uefi.protocols.FileInfo.guid, &file_info_size, &file_info_buffer) != uefi.Status.Success) {
-        printf(allocator, "failed to read file_info\r\n", .{});
+    status = file.getInfo(&uefi.protocols.FileInfo.guid, &file_info_size, &file_info_buffer);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to read file_info: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
@@ -139,20 +152,22 @@ fn readFile(allocator: std.mem.Allocator, file: *uefi.protocols.FileProtocol, bu
         _ = con_out.outputString(L("\r\n"));
     }
 
-    if (boot_services.allocatePool(MemoryType.LoaderData, file_size, buffer) != uefi.Status.Success) {
-        printf(allocator, "failed to allocate file\r\n", .{});
+    status = boot_services.allocatePool(MemoryType.LoaderData, file_size, buffer);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to allocate file: {s}\r\n", .{@tagName(status)});
         halt();
     }
 
-    if (file.read(&file_size, buffer.*) != uefi.Status.Success) {
-        printf(allocator, "failed to read file\r\n", .{});
+    status = file.read(&file_size, buffer.*);
+    if (status != uefi.Status.Success) {
+        printf(allocator, "failed to read file: {s}\r\n", .{@tagName(status)});
         halt();
     }
 }
 
 fn calcLoadAddressRange(kernel_buffer: [*]u8, first: *u64, last: *u64) void {
-    const ehdr :*elf.Elf64_Ehdr = @ptrCast(*elf.Elf64_Ehdr, @alignCast(8, kernel_buffer));
-    var phdr: [*]elf.Elf64_Phdr = @intToPtr([*]elf.Elf64_Phdr,@ptrToInt(kernel_buffer) + ehdr.e_phoff);
+    const ehdr: *elf.Elf64_Ehdr = @ptrCast(*elf.Elf64_Ehdr, @alignCast(8, kernel_buffer));
+    var phdr: [*]elf.Elf64_Phdr = @intToPtr([*]elf.Elf64_Phdr, @ptrToInt(kernel_buffer) + ehdr.e_phoff);
     var i: usize = 0;
     first.* = std.math.inf_u64;
     last.* = 0;
@@ -165,13 +180,13 @@ fn calcLoadAddressRange(kernel_buffer: [*]u8, first: *u64, last: *u64) void {
     }
 }
 
-fn copyLoadSegments(kernel_buffer: [*]u8)void {
-    const ehdr :*elf.Elf64_Ehdr = @ptrCast(*elf.Elf64_Ehdr, @alignCast(8, kernel_buffer));
-    var phdr: [*]elf.Elf64_Phdr = @intToPtr([*]elf.Elf64_Phdr,@ptrToInt(kernel_buffer) + ehdr.e_phoff);
+fn copyLoadSegments(kernel_buffer: [*]u8) void {
+    const ehdr: *elf.Elf64_Ehdr = @ptrCast(*elf.Elf64_Ehdr, @alignCast(8, kernel_buffer));
+    var phdr: [*]elf.Elf64_Phdr = @intToPtr([*]elf.Elf64_Phdr, @ptrToInt(kernel_buffer) + ehdr.e_phoff);
 
     var i: usize = 0;
     while (i < ehdr.e_phnum) : (i += 1) {
-        if (phdr[i].p_type != elf.PT_LOAD){
+        if (phdr[i].p_type != elf.PT_LOAD) {
             continue;
         }
         var segm_in_file: usize = @ptrToInt(ehdr) + phdr[i].p_offset;
