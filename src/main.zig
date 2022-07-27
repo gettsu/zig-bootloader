@@ -18,6 +18,14 @@ var gop: ?*uefi.protocols.GraphicsOutputProtocol = undefined;
 
 var root_dir: *uefi.protocols.FileProtocol = undefined;
 
+const FrameBufferConfig = extern struct {
+    frame_buffer: [*]u8,
+    pixels_per_scan_line: u32,
+    horizontal_resolution: u32,
+    vertical_resolution: u32,
+    pixel_format: uefi.protocols.GraphicsPixelFormat,
+};
+
 // uefiとsystemV64ではabiが違うため一度変換
 // integerはrcx -> rdx -> r8 -> r9 -> stack の順
 comptime {
@@ -26,6 +34,7 @@ comptime {
         \\entryPoint:
         \\    pushq %rbp
         \\    movq %rsp, %rbp
+        \\    movq %rdx, %rdi
         \\    callq *%rcx
         \\    movq %rbp, %rsp
         \\    popq %rbp
@@ -33,7 +42,7 @@ comptime {
     );
 }
 
-extern fn entryPoint(entry_addr: u64) void;
+extern fn entryPoint(entry_addr: u64, frame_buffer_config: *FrameBufferConfig) void;
 
 pub fn main() void {
     var status: uefi.Status = undefined;
@@ -80,6 +89,13 @@ pub fn main() void {
     const entry_addr: u64 = @intToPtr(*u64, kernel_first_addr + 24).*;
     printf(allocator, "entry_addr = 0x{x}\r\n", .{entry_addr});
 
+    var frame_buffer_config = FrameBufferConfig {
+        .frame_buffer = @intToPtr([*]u8, gop.?.mode.frame_buffer_base),
+        .vertical_resolution = gop.?.mode.info.vertical_resolution,
+        .horizontal_resolution = gop.?.mode.info.horizontal_resolution,
+        .pixels_per_scan_line = gop.?.mode.info.pixels_per_scan_line,
+        .pixel_format = gop.?.mode.info.pixel_format,
+    };
     // メモリマップ取得
     var mmap_size: usize = @sizeOf(@TypeOf(memory_map));
     var mmap_key: usize = undefined;
@@ -98,7 +114,7 @@ pub fn main() void {
         halt();
     }
 
-    entryPoint(entry_addr);
+    entryPoint(entry_addr, &frame_buffer_config);
     halt();
 }
 
