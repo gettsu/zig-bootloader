@@ -35,6 +35,7 @@ comptime {
         \\    pushq %rbp
         \\    movq %rsp, %rbp
         \\    movq %rdx, %rdi
+        \\    movq %r8, %rsi
         \\    callq *%rcx
         \\    movq %rbp, %rsp
         \\    popq %rbp
@@ -42,7 +43,7 @@ comptime {
     );
 }
 
-extern fn entryPoint(entry_addr: u64, frame_buffer_config: *FrameBufferConfig) void;
+extern fn entryPoint(entry_addr: u64,frame_buffer_config: *FrameBufferConfig, acpi_table: *anyopaque) void;
 
 pub fn main() void {
     var status: uefi.Status = undefined;
@@ -53,6 +54,10 @@ pub fn main() void {
 
     // プロトコルの取得
     init(allocator);
+
+    var acpi_table = findEfiAcpiTable().?;
+    const s = @ptrCast([*]u8, acpi_table); 
+    printf(allocator, "{s}\r\n", .{s[0..7]});
 
     // カーネルファイルの取得
     var kernel_file: *uefi.protocols.FileProtocol = undefined;
@@ -114,7 +119,7 @@ pub fn main() void {
         halt();
     }
 
-    entryPoint(entry_addr, &frame_buffer_config);
+    entryPoint(entry_addr, &frame_buffer_config, acpi_table);
     halt();
 }
 
@@ -179,6 +184,19 @@ fn readFile(allocator: std.mem.Allocator, file: *uefi.protocols.FileProtocol, bu
         printf(allocator, "failed to read file: {s}\r\n", .{@tagName(status)});
         halt();
     }
+}
+
+fn findEfiAcpiTable() ?*anyopaque {
+    const acpi_guid = uefi.tables.ConfigurationTable.acpi_20_table_guid;
+
+    var i: usize = 0;
+    while (i < uefi.system_table.number_of_table_entries) : (i+=1) {
+        const vendor_guid = uefi.system_table.configuration_table[i].vendor_guid;
+        if (acpi_guid.eql(vendor_guid)) {
+            return uefi.system_table.configuration_table[i].vendor_table;
+        }
+    }
+    return null;
 }
 
 fn calcLoadAddressRange(kernel_buffer: [*]u8, first: *u64, last: *u64) void {
