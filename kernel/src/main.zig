@@ -17,11 +17,11 @@ const PixelColor = struct {
 };
 
 const BGRPixelWriter = struct {
-    config_ : *FrameBufferConfig,
+    config_: *FrameBufferConfig,
 
     const Self = @This();
-    fn new(config: * FrameBufferConfig) Self {
-        return Self{.config_ = config};
+    fn new(config: *FrameBufferConfig) Self {
+        return Self{ .config_ = config };
     }
     fn pixel_at(self: *Self, x: usize, y: usize) [*]u8 {
         var frame_buffer = @ptrCast([*]u8, self.config_.frame_buffer);
@@ -39,8 +39,8 @@ export fn kernelMain(frame_buffer_config: *FrameBufferConfig) void {
     var pixel_writer = BGRPixelWriter.new(frame_buffer_config);
 
     var i: usize = 0;
-    while (i < frame_buffer_config.horizontal_resolution * frame_buffer_config.vertical_resolution): (i += 1) {
-        pixel_writer.write(i % frame_buffer_config.horizontal_resolution, i / frame_buffer_config.horizontal_resolution, PixelColor{.r = 0, .g = 255, .b = 255});
+    while (i < frame_buffer_config.horizontal_resolution * frame_buffer_config.vertical_resolution) : (i += 1) {
+        pixel_writer.write(i % frame_buffer_config.horizontal_resolution, i / frame_buffer_config.horizontal_resolution, PixelColor{ .r = 0, .g = 255, .b = 255 });
     }
     halt();
 }

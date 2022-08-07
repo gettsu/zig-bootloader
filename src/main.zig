@@ -43,7 +43,7 @@ comptime {
     );
 }
 
-extern fn entryPoint(entry_addr: u64,frame_buffer_config: *FrameBufferConfig, acpi_table: *anyopaque) void;
+extern fn entryPoint(entry_addr: u64, frame_buffer_config: *FrameBufferConfig, acpi_table: *anyopaque) void;
 
 pub fn main() void {
     var status: uefi.Status = undefined;
@@ -56,7 +56,7 @@ pub fn main() void {
     init(allocator);
 
     var acpi_table = findEfiAcpiTable().?;
-    const s = @ptrCast([*]u8, acpi_table); 
+    const s = @ptrCast([*]u8, acpi_table);
     printf(allocator, "{s}\r\n", .{s[0..7]});
 
     // カーネルファイルの取得
@@ -94,7 +94,7 @@ pub fn main() void {
     const entry_addr: u64 = @intToPtr(*u64, kernel_first_addr + 24).*;
     printf(allocator, "entry_addr = 0x{x}\r\n", .{entry_addr});
 
-    var frame_buffer_config = FrameBufferConfig {
+    var frame_buffer_config = FrameBufferConfig{
         .frame_buffer = @intToPtr([*]u8, gop.?.mode.frame_buffer_base),
         .vertical_resolution = gop.?.mode.info.vertical_resolution,
         .horizontal_resolution = gop.?.mode.info.horizontal_resolution,
@@ -190,7 +190,7 @@ fn findEfiAcpiTable() ?*anyopaque {
     const acpi_guid = uefi.tables.ConfigurationTable.acpi_20_table_guid;
 
     var i: usize = 0;
-    while (i < uefi.system_table.number_of_table_entries) : (i+=1) {
+    while (i < uefi.system_table.number_of_table_entries) : (i += 1) {
         const vendor_guid = uefi.system_table.configuration_table[i].vendor_guid;
         if (acpi_guid.eql(vendor_guid)) {
             return uefi.system_table.configuration_table[i].vendor_table;
