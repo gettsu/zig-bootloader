@@ -4,3 +4,4 @@ OVMF_CODE.fd
 BOOTX64*
 *.elf
 *.o
+*.bin

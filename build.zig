@@ -14,4 +14,5 @@ pub fn build(b: *std.build.Builder) void {
     exe.setBuildMode(mode);
     exe.setOutputDir("EFI/BOOT");
     b.default_step.dependOn(&exe.step);
+    exe.install();
 }
