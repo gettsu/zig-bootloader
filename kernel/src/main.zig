@@ -2,7 +2,7 @@ const std = @import("std");
 const uefi = std.os.uefi;
 const GraphicsPixelFormat = uefi.protocols.GraphicsPixelFormat;
 
-extern var _binary_hankaku_bin_start :u8;
+extern var _binary_hankaku_bin_start: u8;
 extern var _binary_hankaku_bin_end: u8;
 extern var _binary_hankaku_bin_size: u8;
 
@@ -35,8 +35,8 @@ const PixelColor = struct {
     g: u8,
     b: u8,
     const Self = @This();
-    const white = Self { .r = 255, .g = 255, .b = 255};
-    const black = Self { .r = 0, .g = 0, .b = 0 };
+    const white = Self{ .r = 255, .g = 255, .b = 255 };
+    const black = Self{ .r = 0, .g = 0, .b = 0 };
 };
 
 const BGRPixelWriter = struct {
