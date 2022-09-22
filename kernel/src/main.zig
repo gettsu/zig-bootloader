@@ -11,14 +11,22 @@ export fn kernelMain(frame_buffer_config: *FrameBufferConfig) void {
 
     var i: usize = 0;
     while (i < frame_buffer_config.horizontal_resolution * frame_buffer_config.vertical_resolution) : (i += 1) {
-        pixel_writer.write(i % frame_buffer_config.horizontal_resolution, i / frame_buffer_config.horizontal_resolution, &PixelColor.white);
+        pixel_writer.write(i % frame_buffer_config.horizontal_resolution, i / frame_buffer_config.horizontal_resolution, &PixelColor.black);
     }
-    pixel_writer.writeAscii(0, 0, 'A', &PixelColor.black);
-    pixel_writer.writeAscii(8, 0, 'a', &PixelColor.black);
-    pixel_writer.writeAscii(0, 16, '!', &PixelColor.black);
-    pixel_writer.writeAscii(8, 16, '?', &PixelColor.black);
-    pixel_writer.writeAscii(16, 16, '?', &PixelColor.black);
-    pixel_writer.writeAscii(16, 32, '!', &PixelColor.black);
+
+    const hello_world = "Hello, World!";
+    var pos: u32 = 0;
+    inline for (hello_world) |c| {
+        pixel_writer.writeAscii(pos, 0, c, &PixelColor.white);
+        pos += 8;
+    }
+
+    const desc = "This kernel code is written in Zig language!";
+    pos = 0;
+    inline for (desc) |c| {
+        pixel_writer.writeAscii(pos, 16, c, &PixelColor.white);
+        pos += 8;
+    }
     halt();
 }
 
@@ -87,3 +95,4 @@ fn halt() void {
         asm volatile ("hlt");
     }
 }
+
